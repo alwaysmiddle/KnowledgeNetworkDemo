@@ -29,4 +29,4 @@ export interface RelationshipChain {
   relationships: string[]
 }
 
-export type LayoutMode = 'graph' | 'tree-list' | 'horizontal-tree'
+export type LayoutMode = 'home' | 'graph' | 'tree-list' | 'horizontal-tree'
