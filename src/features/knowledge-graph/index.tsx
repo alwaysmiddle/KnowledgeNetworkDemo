@@ -1,9 +1,9 @@
 import { useState } from 'react'
 import { mockGraph, availableRelationships } from './data/mockData'
 import { RelationshipChainBuilder } from './components/RelationshipChainBuilder'
-import { LayerPanel } from './components/LayerPanel'
 import { GraphCanvas } from './components/GraphCanvas'
 import { useLayerConstruction } from './hooks/useLayerConstruction'
+import { useTreeConstruction } from './hooks/useTreeConstruction'
 import type { LayoutMode } from './types'
 
 export default function KnowledgeGraphDemo() {
@@ -12,6 +12,7 @@ export default function KnowledgeGraphDemo() {
   const [currentLayerPath, setCurrentLayerPath] = useState<string[]>([])
 
   const { layers } = useLayerConstruction(mockGraph, relationshipChain)
+  const tree = useTreeConstruction(mockGraph, relationshipChain)
 
   const hasChain = relationshipChain.length > 0
 
@@ -60,21 +61,38 @@ export default function KnowledgeGraphDemo() {
                 <div className="text-xs text-zinc-500 uppercase tracking-wide pt-2">
                   Layered Views
                 </div>
-                {(['graph', 'tree-list', 'horizontal-tree'] as LayoutMode[]).map(mode => (
-                  <button
-                    key={mode}
-                    onClick={() => handleLayoutChange(mode)}
-                    className={`w-full text-left px-3 py-2 rounded transition-colors ${
-                      layoutMode === mode
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-zinc-700 hover:bg-zinc-600'
-                    }`}
-                  >
-                    {mode === 'graph' && 'Graph (Drill-down)'}
-                    {mode === 'tree-list' && 'Tree List'}
-                    {mode === 'horizontal-tree' && 'Horizontal Tree'}
-                  </button>
-                ))}
+                <button
+                  onClick={() => handleLayoutChange('graph')}
+                  className={`w-full text-left px-3 py-2 rounded transition-colors ${
+                    layoutMode === 'graph'
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-zinc-700 hover:bg-zinc-600'
+                  }`}
+                >
+                  Graph (Drill-down)
+                </button>
+                <button
+                  onClick={() => handleLayoutChange('tree-list')}
+                  className={`w-full text-left px-3 py-2 rounded transition-colors ${
+                    layoutMode === 'tree-list'
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-zinc-700 hover:bg-zinc-600'
+                  }`}
+                >
+                  <div>Tree List</div>
+                  <div className="text-sm opacity-70">Recursive folder structure</div>
+                </button>
+                <button
+                  onClick={() => handleLayoutChange('horizontal-tree')}
+                  className={`w-full text-left px-3 py-2 rounded transition-colors ${
+                    layoutMode === 'horizontal-tree'
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-zinc-700 hover:bg-zinc-600'
+                  }`}
+                >
+                  <div>Horizontal Tree</div>
+                  <div className="text-sm opacity-70">Left-to-right expansion</div>
+                </button>
               </>
             )}
 
@@ -86,14 +104,25 @@ export default function KnowledgeGraphDemo() {
           </div>
         </div>
 
-        {hasChain && layoutMode !== 'home' && (
+        {hasChain && (
           <div className="flex-1 overflow-auto p-4">
-            <h2 className="font-semibold mb-3">Layers</h2>
-            <LayerPanel
-              layers={layers}
-              selectedLayerId={currentLayerPath[currentLayerPath.length - 1] || null}
-              onSelectLayer={(id) => id ? setCurrentLayerPath([id]) : setCurrentLayerPath([])}
-            />
+            <h2 className="font-semibold mb-3">Tree Roots</h2>
+            <p className="text-sm text-zinc-400">
+              {tree.length} root node{tree.length !== 1 ? 's' : ''} found
+            </p>
+            <div className="mt-2 space-y-1">
+              {tree.map(t => (
+                <div
+                  key={t.node.id}
+                  className="text-sm px-2 py-1 bg-zinc-700 rounded"
+                >
+                  {t.node.label}
+                  <span className="text-zinc-500 ml-1">
+                    ({t.children.length} children)
+                  </span>
+                </div>
+              ))}
+            </div>
           </div>
         )}
       </aside>
@@ -102,6 +131,7 @@ export default function KnowledgeGraphDemo() {
         <GraphCanvas
           graph={mockGraph}
           layers={layers}
+          tree={tree}
           layoutMode={layoutMode}
           currentLayerPath={currentLayerPath}
           onDrillDown={handleDrillDown}

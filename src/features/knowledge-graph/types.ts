@@ -29,4 +29,11 @@ export interface RelationshipChain {
   relationships: string[]
 }
 
+export interface TreeNode {
+  node: KnowledgeNode
+  children: TreeNode[]
+  depth: number
+  relationshipToChildren?: string
+}
+
 export type LayoutMode = 'home' | 'graph' | 'tree-list' | 'horizontal-tree'

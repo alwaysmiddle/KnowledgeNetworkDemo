@@ -1,9 +1,10 @@
 import { useState } from 'react'
-import type { KnowledgeGraph, Layer, LayoutMode } from '../types'
+import type { KnowledgeGraph, Layer, LayoutMode, TreeNode } from '../types'
 
 interface Props {
   graph: KnowledgeGraph
   layers: Layer[]
+  tree: TreeNode[]
   layoutMode: LayoutMode
   currentLayerPath: string[]
   onDrillDown: (layerId: string) => void
@@ -19,17 +20,17 @@ const nodeColors: Record<string, string> = {
   default: '#6b7280',
 }
 
-export function GraphCanvas({ graph, layers, layoutMode, currentLayerPath, onDrillDown, onDrillUp }: Props) {
+export function GraphCanvas({ graph, layers, tree, layoutMode, currentLayerPath, onDrillDown, onDrillUp }: Props) {
   if (layoutMode === 'home') {
     return <HomeView graph={graph} />
   }
 
   if (layoutMode === 'tree-list') {
-    return <TreeListView layers={layers} />
+    return <TreeListView tree={tree} />
   }
 
   if (layoutMode === 'horizontal-tree') {
-    return <HorizontalTreeView layers={layers} />
+    return <HorizontalTreeView tree={tree} />
   }
 
   // Graph view with drill-down
@@ -50,7 +51,6 @@ function HomeView({ graph }: { graph: KnowledgeGraph }) {
   const centerX = width / 2
   const centerY = height / 2
 
-  // Position nodes in a circle
   const nodePositions = new Map<string, { x: number; y: number }>()
   nodes.forEach((node, index) => {
     const angle = (2 * Math.PI * index) / nodes.length
@@ -70,7 +70,19 @@ function HomeView({ graph }: { graph: KnowledgeGraph }) {
       </div>
       <div className="flex-1 flex items-center justify-center bg-zinc-900 overflow-auto">
         <svg width={width} height={height}>
-          {/* Edges */}
+          <defs>
+            <marker
+              id="arrowhead"
+              markerWidth="10"
+              markerHeight="7"
+              refX="9"
+              refY="3.5"
+              orient="auto"
+            >
+              <polygon points="0 0, 10 3.5, 0 7" fill="#4b5563" />
+            </marker>
+          </defs>
+
           {edges.map(edge => {
             const source = nodePositions.get(edge.source)
             const target = nodePositions.get(edge.target)
@@ -102,21 +114,6 @@ function HomeView({ graph }: { graph: KnowledgeGraph }) {
             )
           })}
 
-          {/* Arrow marker */}
-          <defs>
-            <marker
-              id="arrowhead"
-              markerWidth="10"
-              markerHeight="7"
-              refX="9"
-              refY="3.5"
-              orient="auto"
-            >
-              <polygon points="0 0, 10 3.5, 0 7" fill="#4b5563" />
-            </marker>
-          </defs>
-
-          {/* Nodes */}
           {nodes.map(node => {
             const pos = nodePositions.get(node.id)
             if (!pos) return null
@@ -170,7 +167,6 @@ function DrillDownGraphView({
   const width = 900
   const height = 600
 
-  // If no path, show layers as nodes
   if (currentLayerPath.length === 0) {
     const layerNodes = layers.map((layer, index) => ({
       id: layer.id,
@@ -228,7 +224,6 @@ function DrillDownGraphView({
     )
   }
 
-  // Show nodes within the selected layer
   const currentLayerId = currentLayerPath[currentLayerPath.length - 1]
   const currentLayer = layers.find(l => l.id === currentLayerId)
 
@@ -264,7 +259,6 @@ function DrillDownGraphView({
       </div>
       <div className="flex-1 flex items-center justify-center bg-zinc-900 overflow-auto">
         <svg width={width} height={height}>
-          {/* Edges within layer */}
           {currentLayer.edges.map(edge => {
             const source = nodePositions.get(edge.source)
             const target = nodePositions.get(edge.target)
@@ -283,7 +277,6 @@ function DrillDownGraphView({
             )
           })}
 
-          {/* Nodes */}
           {nodes.map(node => {
             const pos = nodePositions.get(node.id)
             if (!pos) return null
@@ -315,7 +308,7 @@ function DrillDownGraphView({
   )
 }
 
-function TreeListView({ layers }: { layers: Layer[] }) {
+function TreeListView({ tree }: { tree: TreeNode[] }) {
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set())
 
   const toggleNode = (id: string) => {
@@ -326,63 +319,85 @@ function TreeListView({ layers }: { layers: Layer[] }) {
       next.add(id)
     }
     setExpandedNodes(next)
+  }
+
+  const countDescendants = (node: TreeNode): number => {
+    return node.children.reduce((sum, child) => sum + 1 + countDescendants(child), 0)
+  }
+
+  const renderTreeNode = (treeNode: TreeNode, depth: number = 0): React.ReactNode => {
+    const { node, children } = treeNode
+    const hasChildren = children.length > 0
+    const isExpanded = expandedNodes.has(node.id)
+    const color = nodeColors[node.type] || nodeColors.default
+    const descendantCount = countDescendants(treeNode)
+
+    return (
+      <div key={node.id}>
+        <button
+          onClick={() => hasChildren && toggleNode(node.id)}
+          className={`flex items-center gap-2 w-full text-left px-2 py-1.5 hover:bg-zinc-700 rounded transition-colors ${
+            hasChildren ? 'cursor-pointer' : 'cursor-default'
+          }`}
+          style={{ paddingLeft: `${depth * 20 + 8}px` }}
+        >
+          {hasChildren ? (
+            <span className={`text-zinc-500 text-xs transition-transform ${isExpanded ? 'rotate-90' : ''}`}>
+              ▶
+            </span>
+          ) : (
+            <span className="w-3" />
+          )}
+          <span
+            className="w-3 h-3 rounded-full flex-shrink-0"
+            style={{ backgroundColor: color }}
+          />
+          <span className="truncate">{node.label}</span>
+          <span className="text-zinc-500 text-xs">({node.type})</span>
+          {hasChildren && (
+            <span className="text-zinc-600 text-xs ml-auto">
+              {descendantCount}
+            </span>
+          )}
+        </button>
+
+        {isExpanded && children.length > 0 && (
+          <div>
+            {children.map(child => renderTreeNode(child, depth + 1))}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  if (tree.length === 0) {
+    return (
+      <div className="h-full flex flex-col">
+        <div className="p-3 bg-zinc-800 border-b border-zinc-700">
+          <span className="text-sm text-zinc-400">Tree List View</span>
+        </div>
+        <div className="flex-1 flex items-center justify-center text-zinc-500">
+          No tree structure. Add relationships to the chain.
+        </div>
+      </div>
+    )
   }
 
   return (
     <div className="h-full flex flex-col">
       <div className="p-3 bg-zinc-800 border-b border-zinc-700">
         <span className="text-sm text-zinc-400">Tree List View</span>
+        <span className="mx-2 text-zinc-600">•</span>
+        <span className="text-sm">{tree.length} root(s)</span>
       </div>
-      <div className="flex-1 overflow-auto p-4">
-        <div className="space-y-1">
-          {layers.map((layer, layerIndex) => {
-            const isExpanded = expandedNodes.has(layer.id)
-
-            return (
-              <div key={layer.id}>
-                <button
-                  onClick={() => toggleNode(layer.id)}
-                  className="flex items-center gap-2 w-full text-left px-2 py-1.5 hover:bg-zinc-800 rounded transition-colors"
-                >
-                  <span className={`text-zinc-500 transition-transform ${isExpanded ? 'rotate-90' : ''}`}>
-                    ▶
-                  </span>
-                  <span
-                    className="w-4 h-4 rounded"
-                    style={{ backgroundColor: nodeColors.layer }}
-                  />
-                  <span className="font-medium">Layer {layerIndex}: {layer.name}</span>
-                  <span className="text-zinc-500 text-sm">({layer.nodes.length})</span>
-                </button>
-
-                {isExpanded && (
-                  <div className="ml-6 mt-1 space-y-1">
-                    {layer.nodes.map(node => (
-                      <div
-                        key={node.id}
-                        className="flex items-center gap-2 px-2 py-1.5 hover:bg-zinc-800 rounded transition-colors"
-                      >
-                        <span className="w-2" />
-                        <span
-                          className="w-3 h-3 rounded-full"
-                          style={{ backgroundColor: nodeColors[node.type] || nodeColors.default }}
-                        />
-                        <span>{node.label}</span>
-                        <span className="text-zinc-500 text-sm">({node.type})</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )
-          })}
-        </div>
+      <div className="flex-1 overflow-auto p-2">
+        {tree.map(rootNode => renderTreeNode(rootNode, 0))}
       </div>
     </div>
   )
 }
 
-function HorizontalTreeView({ layers }: { layers: Layer[] }) {
+function HorizontalTreeView({ tree }: { tree: TreeNode[] }) {
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set())
 
   const toggleNode = (id: string) => {
@@ -395,57 +410,69 @@ function HorizontalTreeView({ layers }: { layers: Layer[] }) {
     setExpandedNodes(next)
   }
 
+  const renderTreeNode = (treeNode: TreeNode): React.ReactNode => {
+    const { node, children } = treeNode
+    const hasChildren = children.length > 0
+    const isExpanded = expandedNodes.has(node.id)
+    const color = nodeColors[node.type] || nodeColors.default
+
+    return (
+      <div key={node.id} className="flex items-start gap-2">
+        <div className="flex-shrink-0">
+          <button
+            onClick={() => hasChildren && toggleNode(node.id)}
+            className={`flex items-center gap-2 px-3 py-2 bg-zinc-800 hover:bg-zinc-700 rounded transition-colors ${
+              hasChildren ? 'cursor-pointer' : 'cursor-default'
+            }`}
+          >
+            <span
+              className="w-3 h-3 rounded-full"
+              style={{ backgroundColor: color }}
+            />
+            <span className="whitespace-nowrap text-sm">{node.label}</span>
+            {hasChildren && (
+              <span className={`text-zinc-500 text-xs transition-transform ${isExpanded ? 'rotate-90' : ''}`}>
+                ▶
+              </span>
+            )}
+          </button>
+        </div>
+
+        {isExpanded && children.length > 0 && (
+          <div className="flex items-start gap-2">
+            <div className="flex items-center h-10 text-zinc-600">→</div>
+            <div className="space-y-2">
+              {children.map(child => renderTreeNode(child))}
+            </div>
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  if (tree.length === 0) {
+    return (
+      <div className="h-full flex flex-col">
+        <div className="p-3 bg-zinc-800 border-b border-zinc-700">
+          <span className="text-sm text-zinc-400">Horizontal Tree View</span>
+        </div>
+        <div className="flex-1 flex items-center justify-center text-zinc-500">
+          No tree structure. Add relationships to the chain.
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="h-full flex flex-col">
       <div className="p-3 bg-zinc-800 border-b border-zinc-700">
         <span className="text-sm text-zinc-400">Horizontal Tree View</span>
+        <span className="mx-2 text-zinc-600">•</span>
+        <span className="text-sm">{tree.length} root(s)</span>
       </div>
       <div className="flex-1 overflow-auto p-4">
-        <div className="flex items-start gap-2">
-          {layers.map((layer, layerIndex) => {
-            const isExpanded = expandedNodes.has(layer.id)
-
-            return (
-              <div key={layer.id} className="flex items-start gap-2">
-                <div className="flex-shrink-0">
-                  <button
-                    onClick={() => toggleNode(layer.id)}
-                    className="flex items-center gap-2 px-3 py-2 bg-zinc-800 hover:bg-zinc-700 rounded transition-colors"
-                  >
-                    <span
-                      className="w-4 h-4 rounded"
-                      style={{ backgroundColor: nodeColors.layer }}
-                    />
-                    <span className="font-medium whitespace-nowrap">L{layerIndex}</span>
-                    <span className={`text-zinc-500 text-sm transition-transform ${isExpanded ? 'rotate-90' : ''}`}>
-                      ▶
-                    </span>
-                  </button>
-
-                  {isExpanded && (
-                    <div className="mt-2 ml-2 pl-2 border-l border-zinc-700 space-y-1">
-                      {layer.nodes.map(node => (
-                        <div
-                          key={node.id}
-                          className="flex items-center gap-2 px-2 py-1.5 bg-zinc-800 rounded whitespace-nowrap"
-                        >
-                          <span
-                            className="w-3 h-3 rounded-full"
-                            style={{ backgroundColor: nodeColors[node.type] || nodeColors.default }}
-                          />
-                          <span className="text-sm">{node.label}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                {layerIndex < layers.length - 1 && (
-                  <div className="flex items-center h-10 text-zinc-600">→</div>
-                )}
-              </div>
-            )
-          })}
+        <div className="space-y-4">
+          {tree.map(rootNode => renderTreeNode(rootNode))}
         </div>
       </div>
     </div>
