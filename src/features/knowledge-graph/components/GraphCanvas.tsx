@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { KnowledgeGraph, Layer, LayoutMode, TreeNode } from '../types'
+import type { GraphSyncState, GraphSyncActions } from '../hooks/useGraphSync'
 
 interface Props {
   graph: KnowledgeGraph
@@ -9,6 +10,8 @@ interface Props {
   currentLayerPath: string[]
   onDrillDown: (layerId: string) => void
   onDrillUp: () => void
+  syncState: GraphSyncState
+  syncActions: GraphSyncActions
 }
 
 const nodeColors: Record<string, string> = {
@@ -20,9 +23,9 @@ const nodeColors: Record<string, string> = {
   default: '#6b7280',
 }
 
-export function GraphCanvas({ graph, layers, tree, layoutMode, currentLayerPath, onDrillDown, onDrillUp }: Props) {
+export function GraphCanvas({ graph, layers, tree, layoutMode, currentLayerPath, onDrillDown, onDrillUp, syncState, syncActions }: Props) {
   if (layoutMode === 'home') {
-    return <HomeView graph={graph} />
+    return <HomeView graph={graph} syncState={syncState} syncActions={syncActions} />
   }
 
   if (layoutMode === 'tree-list') {
@@ -44,7 +47,7 @@ export function GraphCanvas({ graph, layers, tree, layoutMode, currentLayerPath,
   )
 }
 
-function HomeView({ graph }: { graph: KnowledgeGraph }) {
+function HomeView({ graph, syncState, syncActions }: { graph: KnowledgeGraph; syncState: GraphSyncState; syncActions: GraphSyncActions }) {
   const { nodes, edges } = graph
   const width = 900
   const height = 600
@@ -61,14 +64,41 @@ function HomeView({ graph }: { graph: KnowledgeGraph }) {
     })
   })
 
+  const getNodeColor = (node: { id: string; type: string }) => {
+    if (syncState.selectedNodeId === node.id) return '#ffffff'
+    if (syncState.hoveredNodeId === node.id) return '#f97316'
+    return nodeColors[node.type] || nodeColors.default
+  }
+
+  const getEdgeColor = (edge: { source: string; target: string }) => {
+    if (syncState.selectedNodeId === edge.source || syncState.selectedNodeId === edge.target) {
+      return '#ffffff'
+    }
+    if (syncState.hoveredNodeId === edge.source || syncState.hoveredNodeId === edge.target) {
+      return '#f97316'
+    }
+    return '#4b5563'
+  }
+
   return (
     <div className="h-full flex flex-col">
       <div className="p-3 bg-zinc-800 border-b border-zinc-700">
-        <span className="text-sm text-zinc-400">Home View</span>
+        <span className="text-sm text-zinc-400">Home View (2D)</span>
         <span className="mx-2 text-zinc-600">•</span>
         <span className="text-sm">{nodes.length} nodes, {edges.length} edges</span>
+        {syncState.selectedNodeId && (
+          <>
+            <span className="mx-2 text-zinc-600">•</span>
+            <span className="text-sm text-blue-400">
+              Selected: {nodes.find(n => n.id === syncState.selectedNodeId)?.label}
+            </span>
+          </>
+        )}
       </div>
-      <div className="flex-1 flex items-center justify-center bg-zinc-900 overflow-auto">
+      <div
+        className="flex-1 flex items-center justify-center bg-zinc-900 overflow-auto"
+        onClick={() => syncActions.clearSelection()}
+      >
         <svg width={width} height={height}>
           <defs>
             <marker
@@ -81,6 +111,26 @@ function HomeView({ graph }: { graph: KnowledgeGraph }) {
             >
               <polygon points="0 0, 10 3.5, 0 7" fill="#4b5563" />
             </marker>
+            <marker
+              id="arrowhead-selected"
+              markerWidth="10"
+              markerHeight="7"
+              refX="9"
+              refY="3.5"
+              orient="auto"
+            >
+              <polygon points="0 0, 10 3.5, 0 7" fill="#ffffff" />
+            </marker>
+            <marker
+              id="arrowhead-hovered"
+              markerWidth="10"
+              markerHeight="7"
+              refX="9"
+              refY="3.5"
+              orient="auto"
+            >
+              <polygon points="0 0, 10 3.5, 0 7" fill="#f97316" />
+            </marker>
           </defs>
 
           {edges.map(edge => {
@@ -90,6 +140,13 @@ function HomeView({ graph }: { graph: KnowledgeGraph }) {
 
             const midX = (source.x + target.x) / 2
             const midY = (source.y + target.y) / 2
+            const edgeColor = getEdgeColor(edge)
+            const isHighlighted = edgeColor !== '#4b5563'
+            const markerId = syncState.selectedNodeId === edge.source || syncState.selectedNodeId === edge.target
+              ? 'arrowhead-selected'
+              : syncState.hoveredNodeId === edge.source || syncState.hoveredNodeId === edge.target
+                ? 'arrowhead-hovered'
+                : 'arrowhead'
 
             return (
               <g key={edge.id}>
@@ -98,9 +155,9 @@ function HomeView({ graph }: { graph: KnowledgeGraph }) {
                   y1={source.y}
                   x2={target.x}
                   y2={target.y}
-                  stroke="#4b5563"
-                  strokeWidth={1}
-                  markerEnd="url(#arrowhead)"
+                  stroke={edgeColor}
+                  strokeWidth={isHighlighted ? 2 : 1}
+                  markerEnd={`url(#${markerId})`}
                 />
                 <text
                   x={midX}
@@ -117,22 +174,45 @@ function HomeView({ graph }: { graph: KnowledgeGraph }) {
           {nodes.map(node => {
             const pos = nodePositions.get(node.id)
             if (!pos) return null
-            const color = nodeColors[node.type] || nodeColors.default
+            const color = getNodeColor(node)
+            const isSelected = syncState.selectedNodeId === node.id
+            const isHovered = syncState.hoveredNodeId === node.id
+            const radius = isSelected ? 24 : isHovered ? 22 : 20
 
             return (
-              <g key={node.id} className="cursor-pointer">
+              <g
+                key={node.id}
+                className="cursor-pointer"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  syncActions.selectNode(node.id)
+                }}
+                onMouseEnter={() => syncActions.hoverNode(node.id)}
+                onMouseLeave={() => syncActions.hoverNode(null)}
+              >
+                {(isSelected || isHovered) && (
+                  <circle
+                    cx={pos.x}
+                    cy={pos.y}
+                    r={radius + 4}
+                    fill="none"
+                    stroke={color}
+                    strokeWidth={2}
+                    opacity={0.5}
+                  />
+                )}
                 <circle
                   cx={pos.x}
                   cy={pos.y}
-                  r={20}
+                  r={radius}
                   fill={color}
-                  className="hover:opacity-80 transition-opacity"
+                  className="transition-all duration-150"
                 />
                 <text
                   x={pos.x}
                   y={pos.y + 35}
                   textAnchor="middle"
-                  className="fill-zinc-300 text-xs"
+                  className="fill-zinc-300 text-xs pointer-events-none"
                 >
                   {node.label}
                 </text>

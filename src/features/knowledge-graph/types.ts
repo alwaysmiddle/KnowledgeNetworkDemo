@@ -37,3 +37,5 @@ export interface TreeNode {
 }
 
 export type LayoutMode = 'home' | 'graph' | 'tree-list' | 'horizontal-tree'
+
+export type ViewMode = '2d' | '3d' | 'split'
