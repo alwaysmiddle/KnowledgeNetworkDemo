@@ -39,3 +39,22 @@ export interface TreeNode {
 export type LayoutMode = 'home' | 'graph' | 'tree-list' | 'horizontal-tree'
 
 export type ViewMode = '2d' | '3d' | 'split'
+
+export interface WhiteboardNode {
+  id: string
+  label: string
+  layer: string
+  x: number
+  y: number
+}
+
+export interface WhiteboardEdge {
+  id: string
+  source: string
+  target: string
+}
+
+export interface WhiteboardSnapshot {
+  nodes: WhiteboardNode[]
+  edges: WhiteboardEdge[]
+}
