@@ -20,6 +20,7 @@ interface LayerCanvasProps {
   nodes: KGNode[]
   edges: KGEdge[]
   hasChildrenIds?: Set<string>
+  layerIndex?: number
   onNodeClick: (nodeId: string) => void
   onNodeContextMenu: (nodeId: string, position: { x: number; y: number }) => void
 }
@@ -28,6 +29,7 @@ export function LayerCanvas({
   nodes,
   edges,
   hasChildrenIds = new Set(),
+  layerIndex,
   onNodeClick,
   onNodeContextMenu,
 }: LayerCanvasProps) {
@@ -47,9 +49,10 @@ export function LayerCanvas({
           label: n.label,
           nodeType: n.type,
           hasChildren: hasChildrenIds.has(n.id),
+          layerIndex,
         },
       })),
-    [nodes, positionMap, hasChildrenIds]
+    [nodes, positionMap, hasChildrenIds, layerIndex]
   )
 
   const rfEdges: Edge[] = useMemo(

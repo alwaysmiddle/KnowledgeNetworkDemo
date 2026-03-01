@@ -6,7 +6,9 @@ import { computeLayers } from './lib/computeLayers'
 import { filterLayer } from './lib/filterLayer'
 import { useLayerTransition } from './lib/useLayerTransition'
 
+import { computeSubgraphIds } from './lib/computeSubgraphIds'
 import { LayerCanvas } from './components/LayerCanvas'
+import { WorldMapCanvas } from './components/WorldMapCanvas'
 import { NodeContextMenu } from './components/NodeContextMenu'
 import { Breadcrumb } from './components/Breadcrumb'
 
@@ -30,13 +32,12 @@ function App() {
 
   const { currentLayerIndex, filterPath } = navState
 
-  // Compute visible nodes and edges for current layer + filter
   const { nodes, edges } = useMemo(
     () => filterLayer(mockGraph, layers, currentLayerIndex, filterPath),
     [currentLayerIndex, filterPath]
   )
 
-  // Nodes that have children in the next layer
+  // Nodes that have children in the next layer (for ▼ badge + context menu)
   const hasChildrenIds = useMemo(() => {
     const outgoingRels = layers[currentLayerIndex]?.outgoingRelationships ?? []
     return new Set(
@@ -46,14 +47,20 @@ function App() {
     )
   }, [currentLayerIndex])
 
+  // Full subgraph highlight for the world map:
+  // ancestors + current layer + all descendants reachable from current visible nodes
+  const worldMapHighlight = useMemo(
+    () => computeSubgraphIds(mockGraph, layers, currentLayerIndex, filterPath, nodes),
+    [currentLayerIndex, filterPath, nodes]
+  )
+
+  // Pass layerIndex so drill-down nodes get color-coded consistently with world map
+  const layerIndex = currentLayerIndex
+
   const handleNodeClick = (nodeId: string) => {
     const node = mockGraph.nodes.find(n => n.id === nodeId)
     if (!node) return
-    setContextMenu({
-      nodeId,
-      nodeLabel: node.label,
-      position: { x: window.innerWidth / 2, y: window.innerHeight / 2 },
-    })
+    setContextMenu({ nodeId, nodeLabel: node.label, position: { x: window.innerWidth / 4, y: window.innerHeight / 2 } })
   }
 
   const handleNodeContextMenu = (nodeId: string, position: { x: number; y: number }) => {
@@ -66,7 +73,6 @@ function App() {
     if (!contextMenu) return
     const { nodeId, nodeLabel } = contextMenu
     const newStep: FilterStep = { layerIndex: currentLayerIndex, nodeId, nodeLabel }
-
     triggerTransition(() => {
       setNavState(prev => ({
         currentLayerIndex: prev.currentLayerIndex + 1,
@@ -87,7 +93,6 @@ function App() {
   const handleBreadcrumbNavigate = (stepIndex: number) => {
     triggerTransition(() => {
       if (stepIndex < 0) {
-        // Navigate to root
         setNavState({ currentLayerIndex: 0, filterPath: [] })
       } else {
         setNavState({
@@ -98,70 +103,96 @@ function App() {
     })
   }
 
+  // Clicking a node in the world map navigates the drill-down pane to that layer (no filter)
+  const handleWorldMapNodeClick = (nodeId: string) => {
+    const targetLayerIndex = layers.findIndex(l => l.nodeIds.includes(nodeId))
+    if (targetLayerIndex < 0 || targetLayerIndex === currentLayerIndex) return
+    triggerTransition(() => {
+      setNavState({ currentLayerIndex: targetLayerIndex, filterPath: [] })
+    })
+  }
+
   const canDrillDown = contextMenu ? hasChildrenIds.has(contextMenu.nodeId) : false
   const canDrillUp = currentLayerIndex > 0
 
   return (
     <div className="flex flex-col h-screen bg-slate-50">
-      <header className="h-14 px-4 flex items-center border-b bg-white shadow-sm shrink-0">
-        <h1 className="text-lg font-semibold text-slate-700">Knowledge Graph Demo</h1>
+      <header className="h-12 px-4 flex items-center border-b bg-white shadow-sm shrink-0 gap-4">
+        <h1 className="text-base font-semibold text-slate-700">Knowledge Graph Demo</h1>
+        <span className="text-xs text-slate-400">Click nodes to drill down · World map on the right</span>
       </header>
 
-      <div className="px-4 py-2 border-b bg-white shrink-0">
-        <Breadcrumb
-          filterPath={filterPath}
-          layerNames={SCHOOL_LAYER_NAMES}
-          currentLayerIndex={currentLayerIndex}
-          onNavigateTo={handleBreadcrumbNavigate}
-        />
+      <div className="flex-1 flex flex-row overflow-hidden">
+
+        {/* ── Left pane: layer drill-down ── */}
+        <div className="flex flex-col w-1/2 border-r border-slate-200 min-w-0">
+          <div className="px-4 py-2 border-b bg-white shrink-0">
+            <Breadcrumb
+              filterPath={filterPath}
+              layerNames={SCHOOL_LAYER_NAMES}
+              currentLayerIndex={currentLayerIndex}
+              onNavigateTo={handleBreadcrumbNavigate}
+            />
+          </div>
+
+          <div className="flex-1 relative overflow-hidden">
+            <div className={`absolute inset-0 transition-all duration-300 ${transitionClass}`}>
+              <LayerCanvas
+                nodes={nodes}
+                edges={edges}
+                hasChildrenIds={hasChildrenIds}
+                layerIndex={layerIndex}
+                onNodeClick={handleNodeClick}
+                onNodeContextMenu={handleNodeContextMenu}
+              />
+            </div>
+
+            {contextMenu && (
+              <NodeContextMenu
+                nodeId={contextMenu.nodeId}
+                nodeLabel={contextMenu.nodeLabel}
+                canDrillDown={canDrillDown}
+                canDrillUp={canDrillUp}
+                onDrillDown={handleDrillDown}
+                onDrillUp={handleDrillUp}
+                onClose={() => setContextMenu(null)}
+                position={contextMenu.position}
+              />
+            )}
+          </div>
+
+          <footer className="h-10 px-4 flex items-center justify-between border-t bg-white text-sm text-slate-500 shrink-0">
+            <div className="flex items-center gap-3">
+              <span className="font-medium text-slate-700">{SCHOOL_LAYER_NAMES[currentLayerIndex]}</span>
+              <span>{nodes.length} nodes</span>
+              {filterPath.length > 0 && (
+                <span className="text-slate-400">filtered by: {filterPath[filterPath.length - 1].nodeLabel}</span>
+              )}
+            </div>
+            <button
+              onClick={handleDrillUp}
+              disabled={!canDrillUp}
+              className="px-3 py-1 rounded border text-sm transition-colors
+                disabled:border-slate-200 disabled:text-slate-300 disabled:cursor-not-allowed
+                enabled:border-slate-300 enabled:text-slate-600 enabled:hover:border-blue-400 enabled:hover:text-blue-600"
+            >
+              ← Back
+            </button>
+          </footer>
+        </div>
+
+        {/* ── Right pane: world map ── */}
+        <div className="flex flex-col w-1/2 min-w-0">
+          <WorldMapCanvas
+            graph={mockGraph}
+            layers={layers}
+            layerNames={SCHOOL_LAYER_NAMES}
+            visibleNodeIds={worldMapHighlight}
+            onNodeClick={handleWorldMapNodeClick}
+          />
+        </div>
+
       </div>
-
-      <main className="flex-1 relative overflow-hidden">
-        <div className={`absolute inset-0 transition-all duration-300 ${transitionClass}`}>
-          <LayerCanvas
-            nodes={nodes}
-            edges={edges}
-            hasChildrenIds={hasChildrenIds}
-            onNodeClick={handleNodeClick}
-            onNodeContextMenu={handleNodeContextMenu}
-          />
-        </div>
-
-        {contextMenu && (
-          <NodeContextMenu
-            nodeId={contextMenu.nodeId}
-            nodeLabel={contextMenu.nodeLabel}
-            canDrillDown={canDrillDown}
-            canDrillUp={canDrillUp}
-            onDrillDown={handleDrillDown}
-            onDrillUp={handleDrillUp}
-            onClose={() => setContextMenu(null)}
-            position={contextMenu.position}
-          />
-        )}
-      </main>
-
-      {/* Step 12 — Footer bar */}
-      <footer className="h-10 px-4 flex items-center justify-between border-t bg-white text-sm text-slate-500 shrink-0">
-        <div className="flex items-center gap-3">
-          <span className="font-medium text-slate-700">{SCHOOL_LAYER_NAMES[currentLayerIndex]}</span>
-          <span>{nodes.length} nodes</span>
-          {filterPath.length > 0 && (
-            <span className="text-slate-400">
-              filtered by: {filterPath[filterPath.length - 1].nodeLabel}
-            </span>
-          )}
-        </div>
-        <button
-          onClick={handleDrillUp}
-          disabled={!canDrillUp}
-          className="px-3 py-1 rounded border text-sm transition-colors
-            disabled:border-slate-200 disabled:text-slate-300 disabled:cursor-not-allowed
-            enabled:border-slate-300 enabled:text-slate-600 enabled:hover:border-blue-400 enabled:hover:text-blue-600"
-        >
-          ← Back
-        </button>
-      </footer>
     </div>
   )
 }
