@@ -6,6 +6,7 @@ import { KGNodeComponent } from './KGNode'
 import type { KGNodeData } from './KGNode'
 import { KGEdgeComponent } from './KGEdge'
 import { layoutWorldMapDagre } from '../lib/layoutWorldMapDagre'
+import { layoutSugiyama } from '../lib/layoutSugiyama'
 import { detectCommunitiesLouvain } from '../lib/detectCommunitiesLouvain'
 import type { KnowledgeGraph, ComputedLayer } from '../types'
 
@@ -52,13 +53,16 @@ export function WorldMapCanvas({
   visibleNodeIds,
   onNodeClick,
 }: WorldMapCanvasProps) {
-  const [viewMode, setViewMode] = useState<'hierarchy' | 'cluster'>('hierarchy')
+  const [viewMode, setViewMode] = useState<'hierarchy' | 'sugiyama' | 'cluster'>('hierarchy')
 
   // --- Hierarchy mode ---
   const positionMap = useMemo(() => {
     const positions = layoutWorldMapDagre(graph, layers)
     return Object.fromEntries(positions.map(p => [p.id, p.position]))
   }, [graph, layers])
+
+  // --- Sugiyama mode ---
+  const sugiyamaPositionMap = useMemo(() => layoutSugiyama(graph), [graph])
 
   const drillRelationships = useMemo(
     () => new Set(layers.flatMap(l => l.outgoingRelationships)),
@@ -127,6 +131,20 @@ export function WorldMapCanvas({
           },
         }))
     }
+    if (viewMode === 'sugiyama') {
+      return graph.nodes.map(n => ({
+        id: n.id,
+        type: 'kgNode',
+        position: sugiyamaPositionMap[n.id] ?? { x: 0, y: 0 },
+        data: {
+          label: n.label,
+          nodeType: n.type,
+          hasChildren: hasChildrenIds.has(n.id),
+          layerIndex: nodeLayerIndex[n.id],
+          dimmed: visibleNodeIds.size > 0 && !visibleNodeIds.has(n.id),
+        },
+      }))
+    }
     // cluster mode — all nodes, colored by community
     return graph.nodes.map(n => ({
       id: n.id,
@@ -140,7 +158,7 @@ export function WorldMapCanvas({
         dimmed: visibleNodeIds.size > 0 && !visibleNodeIds.has(n.id),
       },
     }))
-  }, [viewMode, graph.nodes, positionMap, hasChildrenIds, nodeLayerIndex, visibleNodeIds, clusterPositionMap, louvainResult])
+  }, [viewMode, graph.nodes, positionMap, sugiyamaPositionMap, hasChildrenIds, nodeLayerIndex, visibleNodeIds, clusterPositionMap, louvainResult])
 
   const rfEdges: Edge[] = useMemo(
     () =>
@@ -158,9 +176,9 @@ export function WorldMapCanvas({
     onNodeClick(node.id)
   }
 
-  const legendItems = viewMode === 'hierarchy'
-    ? layerNames.map((name, i) => ({ name, colorClass: LAYER_BADGE_COLORS[i] ?? 'bg-slate-100 text-slate-600 border-slate-300' }))
-    : louvainResult.communityLabels.map((name, i) => ({ name, colorClass: CLUSTER_BADGE_COLORS[i % CLUSTER_BADGE_COLORS.length] }))
+  const legendItems = viewMode === 'cluster'
+    ? louvainResult.communityLabels.map((name, i) => ({ name, colorClass: CLUSTER_BADGE_COLORS[i % CLUSTER_BADGE_COLORS.length] }))
+    : layerNames.map((name, i) => ({ name, colorClass: LAYER_BADGE_COLORS[i] ?? 'bg-slate-100 text-slate-600 border-slate-300' }))
 
   return (
     <div className="relative w-full h-full">
@@ -176,13 +194,22 @@ export function WorldMapCanvas({
         ))}
       </div>
 
-      {/* Toggle button */}
-      <button
-        onClick={() => setViewMode(v => v === 'hierarchy' ? 'cluster' : 'hierarchy')}
-        className="absolute top-2 right-2 z-10 text-[11px] px-3 py-0.5 rounded-full border bg-white border-slate-300 text-slate-600 hover:border-blue-400 hover:text-blue-600"
-      >
-        {viewMode === 'hierarchy' ? 'Cluster View' : 'Hierarchy View'}
-      </button>
+      {/* View mode tabs */}
+      <div className="absolute top-2 right-2 z-10 flex gap-1">
+        {(['hierarchy', 'sugiyama', 'cluster'] as const).map(mode => (
+          <button
+            key={mode}
+            onClick={() => setViewMode(mode)}
+            className={`text-[11px] px-3 py-0.5 rounded-full border capitalize transition-colors ${
+              viewMode === mode
+                ? 'bg-blue-600 border-blue-600 text-white'
+                : 'bg-white border-slate-300 text-slate-600 hover:border-blue-400 hover:text-blue-600'
+            }`}
+          >
+            {mode}
+          </button>
+        ))}
+      </div>
 
       <ReactFlow
         key={viewMode}
