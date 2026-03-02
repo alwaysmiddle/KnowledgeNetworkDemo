@@ -23,9 +23,9 @@ export function KGNodeComponent({ data, selected }: NodeProps) {
   const { label, hasChildren, layerIndex, dimmed } = data as KGNodeData
 
   const colorClass =
-    layerIndex !== undefined && LAYER_COLORS[layerIndex]
-      ? LAYER_COLORS[layerIndex]
-      : 'border-slate-300 bg-white text-slate-700'
+    (data as KGNodeData).clusterColor as string
+    ?? (layerIndex !== undefined ? LAYER_COLORS[layerIndex] : undefined)
+    ?? 'border-slate-300 bg-white text-slate-700'
 
   return (
     <div

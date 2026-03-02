@@ -60,7 +60,7 @@ function App() {
   const handleNodeClick = (nodeId: string) => {
     const node = mockGraph.nodes.find(n => n.id === nodeId)
     if (!node) return
-    setContextMenu({ nodeId, nodeLabel: node.label, position: { x: window.innerWidth / 4, y: window.innerHeight / 2 } })
+    setContextMenu({ nodeId, nodeLabel: node.label, position: { x: 220, y: window.innerHeight / 2 } })
   }
 
   const handleNodeContextMenu = (nodeId: string, position: { x: number; y: number }) => {
@@ -122,10 +122,18 @@ function App() {
         <span className="text-xs text-slate-400">Click nodes to drill down · World map on the right</span>
       </header>
 
-      <div className="flex-1 flex flex-row overflow-hidden">
+      {/* ── Full-screen world map ── */}
+      <div className="flex-1 relative overflow-hidden">
+        <WorldMapCanvas
+          graph={mockGraph}
+          layers={layers}
+          layerNames={SCHOOL_LAYER_NAMES}
+          visibleNodeIds={worldMapHighlight}
+          onNodeClick={handleWorldMapNodeClick}
+        />
 
-        {/* ── Left pane: layer drill-down ── */}
-        <div className="flex flex-col w-1/2 border-r border-slate-200 min-w-0">
+        {/* ── Floating drill-down panel — top-left corner ── */}
+        <div className="absolute top-3 left-3 z-20 flex flex-col w-[360px] h-[calc(100%-24px)] bg-white rounded-xl border border-slate-200 shadow-xl overflow-hidden">
           <div className="px-4 py-2 border-b bg-white shrink-0">
             <Breadcrumb
               filterPath={filterPath}
@@ -135,7 +143,7 @@ function App() {
             />
           </div>
 
-          <div className="flex-1 relative overflow-hidden">
+          <div className="flex-1 relative overflow-hidden min-h-0">
             <div className={`absolute inset-0 transition-all duration-300 ${transitionClass}`}>
               <LayerCanvas
                 nodes={nodes}
@@ -146,19 +154,6 @@ function App() {
                 onNodeContextMenu={handleNodeContextMenu}
               />
             </div>
-
-            {contextMenu && (
-              <NodeContextMenu
-                nodeId={contextMenu.nodeId}
-                nodeLabel={contextMenu.nodeLabel}
-                canDrillDown={canDrillDown}
-                canDrillUp={canDrillUp}
-                onDrillDown={handleDrillDown}
-                onDrillUp={handleDrillUp}
-                onClose={() => setContextMenu(null)}
-                position={contextMenu.position}
-              />
-            )}
           </div>
 
           <footer className="h-10 px-4 flex items-center justify-between border-t bg-white text-sm text-slate-500 shrink-0">
@@ -166,7 +161,7 @@ function App() {
               <span className="font-medium text-slate-700">{SCHOOL_LAYER_NAMES[currentLayerIndex]}</span>
               <span>{nodes.length} nodes</span>
               {filterPath.length > 0 && (
-                <span className="text-slate-400">filtered by: {filterPath[filterPath.length - 1].nodeLabel}</span>
+                <span className="text-slate-400">· {filterPath[filterPath.length - 1].nodeLabel}</span>
               )}
             </div>
             <button
@@ -181,17 +176,18 @@ function App() {
           </footer>
         </div>
 
-        {/* ── Right pane: world map ── */}
-        <div className="flex flex-col w-1/2 min-w-0">
-          <WorldMapCanvas
-            graph={mockGraph}
-            layers={layers}
-            layerNames={SCHOOL_LAYER_NAMES}
-            visibleNodeIds={worldMapHighlight}
-            onNodeClick={handleWorldMapNodeClick}
+        {contextMenu && (
+          <NodeContextMenu
+            nodeId={contextMenu.nodeId}
+            nodeLabel={contextMenu.nodeLabel}
+            canDrillDown={canDrillDown}
+            canDrillUp={canDrillUp}
+            onDrillDown={handleDrillDown}
+            onDrillUp={handleDrillUp}
+            onClose={() => setContextMenu(null)}
+            position={contextMenu.position}
           />
-        </div>
-
+        )}
       </div>
     </div>
   )
