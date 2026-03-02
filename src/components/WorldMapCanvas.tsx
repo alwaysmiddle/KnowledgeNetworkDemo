@@ -5,7 +5,7 @@ import type { Node, Edge, NodeMouseHandler } from '@xyflow/react'
 import { KGNodeComponent } from './KGNode'
 import type { KGNodeData } from './KGNode'
 import { KGEdgeComponent } from './KGEdge'
-import { layoutWorldMap } from '../lib/layoutWorldMap'
+import { layoutWorldMapDagre } from '../lib/layoutWorldMapDagre'
 import type { KnowledgeGraph, ComputedLayer } from '../types'
 
 // Stable references — must be outside component
@@ -36,9 +36,9 @@ export function WorldMapCanvas({
   onNodeClick,
 }: WorldMapCanvasProps) {
   const positionMap = useMemo(() => {
-    const positions = layoutWorldMap(layers)
+    const positions = layoutWorldMapDagre(graph, layers)
     return Object.fromEntries(positions.map(p => [p.id, p.position]))
-  }, [layers])
+  }, [graph, layers])
 
   // Which nodes have outgoing drill-down edges (i.e. have children in next layer)
   const drillRelationships = useMemo(
