@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import {
   ReactFlow,
   Background,
@@ -10,6 +10,7 @@ import { KGNodeComponent } from './KGNode'
 import type { KGNodeData } from './KGNode'
 import { KGEdgeComponent } from './KGEdge'
 import { layoutNodes } from '../lib/layoutNodes'
+import { layoutLayerElk } from '../lib/layoutElk'
 import type { KGNode, KGEdge } from '../types'
 
 // Defined outside component to keep references stable across renders
@@ -33,11 +34,21 @@ export function LayerCanvas({
   onNodeClick,
   onNodeContextMenu,
 }: LayerCanvasProps) {
-  const positions = useMemo(() => layoutNodes(nodes.map(n => n.id)), [nodes])
-  const positionMap = useMemo(
-    () => Object.fromEntries(positions.map(p => [p.id, p.position])),
-    [positions]
-  )
+  // Immediate grid positions — shown instantly as ELK computes
+  const gridPositionMap = useMemo(() => {
+    const positions = layoutNodes(nodes.map(n => n.id))
+    return Object.fromEntries(positions.map(p => [p.id, p.position]))
+  }, [nodes])
+
+  // ELK positions — replace grid once the async layout resolves
+  const [elkPositionMap, setElkPositionMap] = useState<Record<string, { x: number; y: number }>>({})
+
+  useEffect(() => {
+    setElkPositionMap({}) // clear stale positions immediately on layer change
+    layoutLayerElk(nodes, edges).then(setElkPositionMap)
+  }, [nodes, edges])
+
+  const positionMap = Object.keys(elkPositionMap).length > 0 ? elkPositionMap : gridPositionMap
 
   const rfNodes: Node<KGNodeData>[] = useMemo(
     () =>

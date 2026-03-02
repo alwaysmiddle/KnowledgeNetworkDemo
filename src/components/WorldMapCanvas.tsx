@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import { ReactFlow, Background, BackgroundVariant } from '@xyflow/react'
 import type { Node, Edge, NodeMouseHandler } from '@xyflow/react'
 
@@ -7,6 +7,7 @@ import type { KGNodeData } from './KGNode'
 import { KGEdgeComponent } from './KGEdge'
 import { layoutWorldMapDagre } from '../lib/layoutWorldMapDagre'
 import { layoutSugiyama } from '../lib/layoutSugiyama'
+import { layoutWorldMapElk } from '../lib/layoutElk'
 import { detectCommunitiesLouvain } from '../lib/detectCommunitiesLouvain'
 import type { KnowledgeGraph, ComputedLayer } from '../types'
 
@@ -53,13 +54,21 @@ export function WorldMapCanvas({
   visibleNodeIds,
   onNodeClick,
 }: WorldMapCanvasProps) {
-  const [viewMode, setViewMode] = useState<'hierarchy' | 'sugiyama' | 'cluster'>('hierarchy')
+  const [viewMode, setViewMode] = useState<'hierarchy' | 'elk' | 'sugiyama' | 'cluster'>('hierarchy')
 
   // --- Hierarchy mode ---
   const positionMap = useMemo(() => {
     const positions = layoutWorldMapDagre(graph, layers)
     return Object.fromEntries(positions.map(p => [p.id, p.position]))
   }, [graph, layers])
+
+  // --- ELK Layered mode ---
+  const [elkPositionMap, setElkPositionMap] = useState<Record<string, { x: number; y: number }>>({})
+
+  useEffect(() => {
+    if (viewMode !== 'elk') return
+    layoutWorldMapElk(graph, layers).then(setElkPositionMap)
+  }, [viewMode, graph, layers])
 
   // --- Sugiyama mode ---
   const sugiyamaPositionMap = useMemo(() => layoutSugiyama(graph), [graph])
@@ -115,6 +124,22 @@ export function WorldMapCanvas({
 
   // --- Build rfNodes based on current mode ---
   const rfNodes: Node<KGNodeData>[] = useMemo(() => {
+    if (viewMode === 'elk') {
+      return graph.nodes
+        .filter(n => nodeLayerIndex[n.id] !== undefined)
+        .map(n => ({
+          id: n.id,
+          type: 'kgNode',
+          position: elkPositionMap[n.id] ?? { x: 0, y: 0 },
+          data: {
+            label: n.label,
+            nodeType: n.type,
+            hasChildren: hasChildrenIds.has(n.id),
+            layerIndex: nodeLayerIndex[n.id],
+            dimmed: visibleNodeIds.size > 0 && !visibleNodeIds.has(n.id),
+          },
+        }))
+    }
     if (viewMode === 'hierarchy') {
       return graph.nodes
         .filter(n => nodeLayerIndex[n.id] !== undefined)
@@ -158,7 +183,7 @@ export function WorldMapCanvas({
         dimmed: visibleNodeIds.size > 0 && !visibleNodeIds.has(n.id),
       },
     }))
-  }, [viewMode, graph.nodes, positionMap, sugiyamaPositionMap, hasChildrenIds, nodeLayerIndex, visibleNodeIds, clusterPositionMap, louvainResult])
+  }, [viewMode, graph.nodes, positionMap, elkPositionMap, sugiyamaPositionMap, hasChildrenIds, nodeLayerIndex, visibleNodeIds, clusterPositionMap, louvainResult])
 
   const rfEdges: Edge[] = useMemo(
     () =>
@@ -196,7 +221,7 @@ export function WorldMapCanvas({
 
       {/* View mode tabs */}
       <div className="absolute top-2 right-2 z-10 flex gap-1">
-        {(['hierarchy', 'sugiyama', 'cluster'] as const).map(mode => (
+        {(['hierarchy', 'elk', 'sugiyama', 'cluster'] as const).map(mode => (
           <button
             key={mode}
             onClick={() => setViewMode(mode)}
