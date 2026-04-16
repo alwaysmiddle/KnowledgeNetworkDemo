@@ -1,0 +1,57 @@
+services:
+  neo4j:
+    image: neo4j:5
+    container_name: kn-demo-neo4j
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    environment:
+      NEO4J_AUTH: ${NEO4J_USER:-neo4j}/${NEO4J_PASSWORD:-kndemopw}
+      NEO4J_PLUGINS: '["apoc"]'
+    volumes:
+      - neo4j_data:/data
+      - neo4j_logs:/logs
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:7474 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  jena:
+    image: stain/jena-fuseki:latest
+    container_name: kn-demo-jena
+    ports:
+      - "3030:3030"
+    environment:
+      ADMIN_PASSWORD: ${JENA_ADMIN_PASSWORD:-jenapass}
+      FUSEKI_DATASET_1: knowledgenetwork
+    volumes:
+      - ./infrastructure/jena:/staging:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3030/$$/ping || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  pipeline:
+    build:
+      context: ./infrastructure/pipeline
+      dockerfile: Dockerfile
+    container_name: kn-demo-pipeline
+    ports:
+      - "8001:8001"
+    environment:
+      HOST: 0.0.0.0
+      PORT: 8001
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+
+volumes:
+  neo4j_data:
+  neo4j_logs:

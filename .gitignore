@@ -22,3 +22,11 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Docker
+.env
+
+# Infrastructure
+infrastructure/pipeline/__pycache__/
+infrastructure/jena/*.owl
+infrastructure/jena/*.ttl
